@@ -9,12 +9,12 @@ async function main() {
       const joke = await data.json();
 
       channel.send(joke.value);
-    }, 2000);
+    }, 7000);
   }
 
   await doSomeDataFetchingWithInterval();
 
-  await channel.receive(console.log);
+  await channel.receive(console.log, { timeout: 5000 });
 }
 
 main();
