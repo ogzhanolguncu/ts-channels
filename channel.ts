@@ -1,10 +1,16 @@
+enum ChannelState {
+  OPEN = "open",
+  CLOSED = "closed",
+}
+
 type ReceiveOptions = {
   timeout?: number;
 };
 
-const ERRORS = {
-  TIMEOUT: "Receiving data is taking longer than expected.",
-} as const;
+export enum SIGNALS {
+  TIMEOUT = "Receiving data is taking longer than expected.",
+  CLOSE = "Channel is closed.",
+}
 
 export class Channel<TData> {
   /**
@@ -14,7 +20,7 @@ export class Channel<TData> {
   /**
    * This queue stores functions of pending receivers (i.e., promises that are waiting for data).
    */
-  private pendingReceivers: ((value: TData) => void)[] = [];
+  private pendingReceivers: ((value: TData | SIGNALS) => void)[] = [];
   /**
    * This minQueueLengthForProcessing will let channel to receive messages once limit is satisfied
    */
@@ -23,8 +29,9 @@ export class Channel<TData> {
    * This bufferSize is there to ensure there are enough in the queue
    */
   private bufferSize = 0;
+  private state: ChannelState = ChannelState.OPEN;
 
-  constructor(startReceivingLimit = 1, bufferSize = 2) {
+  constructor(startReceivingLimit = 1, bufferSize = 0) {
     this.minQueueLengthForProcessing = startReceivingLimit;
     this.bufferSize = bufferSize;
   }
@@ -34,6 +41,9 @@ export class Channel<TData> {
    * @param value - The value to send.
    */
   send(value: TData) {
+    if (this.state === ChannelState.CLOSED) {
+      return;
+    }
     this.queue.push(value);
 
     if (
@@ -49,31 +59,54 @@ export class Channel<TData> {
    * @param cb - The callback to handle the received message.
    * @param opts - Options for receiving the message.
    */
-  async receive(cb?: (message: TData) => void, opts?: ReceiveOptions) {
+  async receive(
+    cb?: (message: TData | SIGNALS) => void,
+    opts?: ReceiveOptions
+  ) {
     for await (const message of this.iter(opts)) {
       cb?.(message);
     }
   }
 
-  /**
-   * Internal method to receive a value with optional timeout.
-   * @param opts - Options for receiving the message.
-   * @returns A promise that resolves with the received value.
-   */
-  private _receive(opts?: ReceiveOptions): Promise<TData> {
+  async close() {
+    if (this.state === ChannelState.CLOSED) {
+      return;
+    }
+
+    this.state = ChannelState.CLOSED;
+
+    // Drain the queue and notify pending receivers with queued values
+    while (this.queue.length > 0 && this.pendingReceivers.length > 0) {
+      const resolve = this.pendingReceivers.shift();
+      const queuedValue = this.queue.shift();
+      resolve?.(queuedValue!);
+    }
+
+    // Notify remaining pending receivers that the channel is closed
+    while (this.pendingReceivers.length > 0) {
+      const resolve = this.pendingReceivers.shift();
+      resolve?.(SIGNALS.CLOSE);
+    }
+  }
+
+  private _receive(opts?: ReceiveOptions): Promise<TData | SIGNALS> {
     if (this.queue.length > this.bufferSize) {
       return Promise.resolve(this.queue.shift()!);
-    } else {
-      return new Promise((resolve, reject) => {
-        const timer = opts?.timeout
-          ? setTimeout(() => reject(ERRORS.TIMEOUT), opts.timeout)
-          : null;
-        this.pendingReceivers.push((data) => {
-          if (timer) clearTimeout(timer);
-          resolve(data);
-        });
-      });
     }
+
+    if (this.state === ChannelState.CLOSED) {
+      return Promise.resolve(SIGNALS.CLOSE);
+    }
+
+    return new Promise((resolve, reject) => {
+      const timer = opts?.timeout
+        ? setTimeout(() => reject(SIGNALS.TIMEOUT), opts.timeout)
+        : null;
+      this.pendingReceivers.push((data) => {
+        if (timer) clearTimeout(timer);
+        resolve(data);
+      });
+    });
   }
 
   /**
@@ -82,7 +115,12 @@ export class Channel<TData> {
    */
   private async *iter(opts?: ReceiveOptions) {
     while (true) {
-      yield await this._receive(opts);
+      const message = await this._receive(opts);
+      if (message === SIGNALS.CLOSE) {
+        yield message;
+        break;
+      }
+      yield message;
     }
   }
 
@@ -90,13 +128,10 @@ export class Channel<TData> {
    * Process pending receivers by resolving their promises with queued values.
    */
   private processPendingReceivers() {
-    while (
-      this.pendingReceivers.length > 0 &&
-      this.queue.length > this.bufferSize
-    ) {
+    while (this.pendingReceivers.length > 0 && this.queue.length > 0) {
       const resolve = this.pendingReceivers.shift();
       const queuedValue = this.queue.shift();
-      resolve!(queuedValue!);
+      resolve?.(queuedValue!);
     }
   }
 }
