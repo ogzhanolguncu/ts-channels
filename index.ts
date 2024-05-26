@@ -1,6 +1,8 @@
 import { Channel } from "./channel";
 
-const channel = new Channel<string>();
+const channel = new Channel<string>(1, 0);
+channel.send("Hello there!");
+void channel.receive(console.log);
 
 async function main() {
   async function doSomeDataFetchingWithInterval() {
@@ -9,12 +11,10 @@ async function main() {
       const joke = await data.json();
 
       channel.send(joke.value);
-    }, 7000);
+    }, 5000);
   }
 
   await doSomeDataFetchingWithInterval();
-
-  await channel.receive(console.log, { timeout: 5000 });
 }
 
 main();
