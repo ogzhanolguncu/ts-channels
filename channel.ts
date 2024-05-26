@@ -10,11 +10,12 @@ type ReceiveOptions = {
 export enum SIGNALS {
   TIMEOUT = "Receiving data is taking longer than expected.",
   CLOSE = "Channel is closed.",
+  BACK_PRESSURE = "Channel is full",
 }
 
 export class Channel<TData> {
   /**
-   * This queue stores items when there are no active pending receivers
+   * This queue stores messages when there are no active pending receivers
    */
   private queue: TData[] = [];
   /**
@@ -26,24 +27,41 @@ export class Channel<TData> {
    */
   private minQueueLengthForProcessing = 1;
   /**
-   * This bufferSize is there to ensure there are enough in the queue
+   * This bufferSize is there to ensure there are enough messages in the queue
    */
   private bufferSize = 0;
+  /**
+   * Simple toggle to prevent openning and closing the by request.
+   */
   private state: ChannelState = ChannelState.OPEN;
+  /**
+   * Variable to handle backpressure of channel queue
+   */
+  private maxQueueSize: number;
 
-  constructor(startReceivingLimit = 1, bufferSize = 0) {
-    this.minQueueLengthForProcessing = startReceivingLimit;
+  constructor(
+    minQueueLengthForProcessing = 1,
+    bufferSize = 0,
+    maximumQueueSize = 10
+  ) {
+    this.minQueueLengthForProcessing = minQueueLengthForProcessing;
     this.bufferSize = bufferSize;
+    this.maxQueueSize = maximumQueueSize;
   }
 
   /**
    * Send a value to the channel.
    * @param value - The value to send.
    */
-  send(value: TData) {
+  send(value: TData): Promise<void> {
     if (this.state === ChannelState.CLOSED) {
-      return;
+      return Promise.reject(SIGNALS.CLOSE);
     }
+
+    if (this.queue.length >= this.maxQueueSize) {
+      return Promise.reject(SIGNALS.BACK_PRESSURE);
+    }
+
     this.queue.push(value);
 
     if (
@@ -52,6 +70,8 @@ export class Channel<TData> {
     ) {
       this.processPendingReceivers();
     }
+
+    return Promise.resolve();
   }
 
   /**
@@ -95,7 +115,7 @@ export class Channel<TData> {
     }
 
     if (this.state === ChannelState.CLOSED) {
-      return Promise.resolve(SIGNALS.CLOSE);
+      return Promise.reject(SIGNALS.CLOSE);
     }
 
     return new Promise((resolve, reject) => {
@@ -115,12 +135,7 @@ export class Channel<TData> {
    */
   private async *iter(opts?: ReceiveOptions) {
     while (true) {
-      const message = await this._receive(opts);
-      if (message === SIGNALS.CLOSE) {
-        yield message;
-        break;
-      }
-      yield message;
+      yield await this._receive(opts);
     }
   }
 

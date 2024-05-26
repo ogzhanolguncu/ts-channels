@@ -22,22 +22,33 @@ describe("Channel", () => {
   });
 
   test("should return closed message", async () => {
-    let res = "";
-    const channel = new Channel<string>(1, 0);
+    const channel = new Channel<string>(1, 0, 10);
 
-    channel.send("Hello there1");
-    channel.send("Hello there2");
-    channel.send("Hello there3");
-    await channel.close();
-    channel.send("Hello there!");
-    channel.send("Hello there!");
-    await channel.receive(
-      (msg) => {
-        res = msg;
-      },
-      { timeout: 2000 }
-    );
+    const throwable = async () => {
+      await channel.send("Hello there1");
+      await channel.send("Hello there2");
+      await channel.send("Hello there3");
+      await channel.close();
+      await channel.send("Hello there!");
+      await channel.send("Hello there!");
+      await channel.receive(undefined, { timeout: 2000 });
+    };
 
-    expect(res).toEqual(SIGNALS.CLOSE);
+    expect(throwable()).rejects.toEqual(SIGNALS.CLOSE);
+  });
+
+  test("should return chanel is full", async () => {
+    const channel = new Channel<string>(1, 0, 3);
+
+    const throwable = async () => {
+      await channel.send("Hello there1");
+      await channel.send("Hello there2");
+      await channel.send("Hello there3");
+      await channel.send("Hello there1");
+      await channel.send("Hello there2");
+      await channel.receive(console.log, { timeout: 2000 });
+    };
+
+    expect(throwable()).rejects.toEqual(SIGNALS.BACK_PRESSURE);
   });
 });
