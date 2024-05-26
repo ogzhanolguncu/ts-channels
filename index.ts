@@ -1,6 +1,6 @@
 import { Channel } from "./channel";
 
-const channel = new Channel<string>(1, 0, 3);
+const channel = new Channel<string>();
 channel.receive((msg) => console.log("Message received => ", msg));
 channel.send("Hello there-1");
 channel.send("Hello there-2");

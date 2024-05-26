@@ -1,10 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { Channel, SIGNALS } from "./channel";
+import { Channel } from "./channel";
+import { Signals } from "./constants";
 
 describe("Channel", () => {
   test("should return timeout error", () => {
     const throwable = async () => {
-      const channel = new Channel<string>(1, 0);
+      const channel = new Channel<string>();
 
       async () => {
         setInterval(async () => {
@@ -18,11 +19,11 @@ describe("Channel", () => {
       await channel.receive(console.log, { timeout: 2000 });
     };
 
-    expect(throwable).toThrow(SIGNALS.TIMEOUT);
+    expect(throwable).toThrow(Signals.TIMEOUT);
   });
 
   test("should return closed message", async () => {
-    const channel = new Channel<string>(1, 0, 10);
+    const channel = new Channel<string>({ maxQueueSize: 10 });
 
     const throwable = async () => {
       await channel.send("Hello there1");
@@ -34,11 +35,11 @@ describe("Channel", () => {
       await channel.receive(undefined, { timeout: 2000 });
     };
 
-    expect(throwable()).rejects.toEqual(SIGNALS.CLOSE);
+    expect(throwable()).rejects.toEqual(Signals.CLOSE);
   });
 
   test("should return chanel is full", async () => {
-    const channel = new Channel<string>(1, 0, 3);
+    const channel = new Channel<string>({ maxQueueSize: 3 });
 
     const throwable = async () => {
       await channel.send("Hello there1");
@@ -49,6 +50,6 @@ describe("Channel", () => {
       await channel.receive(console.log, { timeout: 2000 });
     };
 
-    expect(throwable()).rejects.toEqual(SIGNALS.BACK_PRESSURE);
+    expect(throwable()).rejects.toEqual(Signals.BACK_PRESSURE);
   });
 });
