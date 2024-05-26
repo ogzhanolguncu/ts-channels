@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { Channel } from "./channel";
-import { Signals } from "./constants";
+import { CancellationToken, Channel } from "./channel";
+import { Signal } from "./constants";
 
 describe("Channel", () => {
   test("should return timeout error", () => {
@@ -19,7 +19,7 @@ describe("Channel", () => {
       await channel.receive(console.log, { timeout: 2000 });
     };
 
-    expect(throwable).toThrow(Signals.TIMEOUT);
+    expect(throwable).toThrow(Signal.TIMEOUT);
   });
 
   test("should return closed message", async () => {
@@ -35,7 +35,7 @@ describe("Channel", () => {
       await channel.receive(undefined, { timeout: 2000 });
     };
 
-    expect(throwable()).rejects.toEqual(Signals.CLOSE);
+    expect(throwable()).rejects.toEqual(Signal.CLOSE);
   });
 
   test("should return chanel is full", async () => {
@@ -50,6 +50,33 @@ describe("Channel", () => {
       await channel.receive(console.log, { timeout: 2000 });
     };
 
-    expect(throwable()).rejects.toEqual(Signals.BACK_PRESSURE);
+    expect(throwable()).rejects.toEqual(Signal.BACK_PRESSURE);
+  });
+
+  test("should cancel the receive operation with CancellationToken", async () => {
+    const channel = new Channel<string>();
+    const cancelToken = new CancellationToken();
+
+    const receiveOperation = async () => {
+      await channel.receive(undefined, { cancelToken, timeout: 5000 });
+    };
+
+    // Start the receive operation and cancel it after a short delay
+    cancelToken.cancel();
+
+    expect(receiveOperation()).rejects.toEqual(Signal.CANCELLED);
+  });
+
+  test("should cancel the send operation with CancellationToken", async () => {
+    const channel = new Channel<string>();
+    const cancelToken = new CancellationToken();
+
+    const sendOperation = async () => {
+      await channel.send("Test message", cancelToken);
+    };
+
+    cancelToken.cancel();
+
+    expect(sendOperation()).rejects.toEqual(Signal.CANCELLED);
   });
 });
