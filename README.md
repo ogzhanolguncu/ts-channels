@@ -10,6 +10,8 @@ The package contains a `Channel` class that supports:
 - **Cancellation:** Cancel `send` and `receive` operations with `CancellationToken`.
 - **Timeouts:** Specify `timeout` when receiving messages.
 
+This library is implemented in less than ~300 LOC, making it lightweight and easy to understand.
+
 ## Example
 
 ### Basic Usage
